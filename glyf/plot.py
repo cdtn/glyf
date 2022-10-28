@@ -7,7 +7,6 @@ from warnings import warn
 
 import numpy as np
 
-from scipy.ndimage import convolve
 from matplotlib import pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.colors import is_color_like
@@ -19,7 +18,6 @@ from mpl_toolkits import axes_grid1
 from .utils import CycledList, ColorMappingHandler, PlotConfig
 from .utils import evaluate_str_comparison, is_binary_mask, contains_numbers, ceil_div
 from .utils import make_cmap, scale_lightness, invert_color, wrap_by_delimiter
-from ..utils import to_list
 
 
 
@@ -97,11 +95,11 @@ class Layer:
 
     def mask(self, data):
         """ Mask array values matching given conditions. """
-        masking_conditions = self.config.get('mask', None)
-        if masking_conditions is not None:
+        mask_conditions = self.config.get('mask', None)
+        if mask_conditions is not None:
             mask = np.isnan(data)
-            masking_conditions = to_list(masking_conditions)
-            for condition in masking_conditions:
+            mask_conditions = mask_conditions if isinstance(mask_conditions, list) else [mask_conditions]
+            for condition in mask_conditions:
                 if isinstance(condition, Number):
                     condition_mask = data == condition
                 elif isinstance(condition, str):
@@ -116,7 +114,9 @@ class Layer:
         """ Calculate running average on given data with provided window. """
         window = self.config.get('window')
         if window is not None and window < len(data):
-            data = convolve(data, np.ones(window), mode='nearest') / window
+            data = np.convolve(data, np.ones(window), mode='same') / window
+            data[: window // 2 + 1] = np.nan
+            data[- window // 2 : ] = np.nan
             return data
         return None
 
@@ -248,9 +248,9 @@ class Layer:
         histogram_keys = ['bins', 'color', 'alpha', 'label']
         histogram_config = self.config.filter(histogram_keys, prefix='histogram_')
 
-        _, _, bar = self.ax.hist(data, **histogram_config)
+        _, _, bars = self.ax.hist(data, **histogram_config)
 
-        return [bar]
+        return [bars]
 
     def curve(self, data):
         """ Display data as a polygonal chain. """
@@ -682,7 +682,7 @@ class Subplot:
 
         # make new handles
         new_handles = []
-        labels = to_list(label)
+        labels = label if isinstance(label, list) else [label]
         colors = [color] * len(labels) if isinstance(color, str) else color
         alphas = [alpha] * len(labels) if isinstance(alpha, Number) else alpha
 
@@ -1319,9 +1319,13 @@ class Plot:
             figure_keys = ['figsize', 'ncols', 'nrows', 'facecolor', 'dpi', 'tight_layout', 'sharex', 'sharey']
             figure_config = self.config.filter(keys=figure_keys, prefix='figure_')
             figure, axes = plt.subplots(**figure_config)
-            axes = to_list(axes)
+            axes = [axes] if isinstance(axes, plt.Axes) else axes.flatten().tolist()
         else:
-            axes = to_list(axes)
+            if isinstance(axes, plt.Axes):
+                axes = [axes]
+            elif isinstance(axes, np.ndarray):
+                axes = axes.flatten().tolist()
+
             if len(axes) < n_subplots:
                 raise ValueError(f"Not enough axes provided — got ({len(axes)}) for {n_subplots} subplots.")
 
@@ -1499,7 +1503,11 @@ class Plot:
                 msg = "Subplots already created and new axes cannot bespecified."
                 raise ValueError(msg)
 
-        positions = list(range(len(data))) if positions is None else to_list(positions)
+        if positions is None:
+            positions = list(range(len(data)))
+        elif isinstance(positions, (int, np.integer)):
+            positions = [positions]
+
         for absolute_index, subplot in enumerate(self.subplots):
             relative_index = positions.index(absolute_index) if absolute_index in positions else None
             subplot_data = None if relative_index is None else data[relative_index]

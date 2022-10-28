@@ -1,8 +1,9 @@
 """ Plot supllementary functions and classes. """
+import operator
+
 from ast import literal_eval
 from colorsys import rgb_to_hls, hls_to_rgb
 from numbers import Number
-import operator
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,10 +13,7 @@ from matplotlib.colors import ColorConverter, ListedColormap, to_rgba
 from matplotlib.patches import Rectangle
 from matplotlib.legend_handler import HandlerBase
 
-try:
-    from numba import njit
-except ImportError:
-    from ..decorators import njit
+
 
 class CycledList(list):
     """ List that repeats itself from desired position (default is 0).
@@ -210,13 +208,11 @@ def evaluate_str_comparison(arg0, string):
     raise ValueError(msg)
 
 
-@njit()
 def is_binary_mask(array):
-    """ Fast check that array consists of 0 and 1 only. """
-    for item in array:
-        if item not in (0., 1.):
-            return False
-    return True
+    """ Fast check if flat array consists of 0 and 1 only. """
+    array_ = array.astype(np.int64)
+    counts = np.bincount(array_)
+    return len(counts) < 3
 
 
 def contains_numbers(iterable):
